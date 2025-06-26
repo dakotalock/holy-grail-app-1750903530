@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoBot - Incredibly Simple Chat</title>
+    <!-- Tailwind CSS CDN for quick styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to enhance Tailwind or add specific behaviors */
+        body {
+            font-family: 'Inter', sans-serif; /* A modern, clean font */
+            background-color: #f0f2f5; /* Light gray background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Full viewport height */
+            margin: 0;
+        }
+
+        .chat-container {
+            background-color: white;
+            border-radius: 1rem; /* Rounded corners */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); /* Soft shadow */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Ensures rounded corners apply to children */
+        }
+
+        .chat-history {
+            flex-grow: 1; /* Allows it to take available space */
+            overflow-y: auto; /* Scrollable chat history */
+            padding: 1rem;
+            display: flex;
+            flex-direction: column; /* Messages stack vertically */
+            gap: 0.75rem; /* Space between messages */
+            scroll-behavior: smooth; /* Smooth scrolling when new messages arrive */
+        }
+
+        /* Styling for scrollbar (optional, but nice for aesthetics) */
+        .chat-history::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-history::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .chat-history::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .chat-history::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .message-bubble {
+            max-width: 80%; /* Limit bubble width */
+            padding: 0.75rem 1rem;
+            border-radius: 1.25rem; /* More rounded corners for bubbles */
+            word-wrap: break-word; /* Ensures long words break */
+        }
+
+        .user-message {
+            align-self: flex-end; /* Align to the right */
+            background-color: #3b82f6; /* Blue for user messages */
+            color: white;
+            border-bottom-right-radius: 0.25rem; /* Slightly less rounded on one corner */
+        }
+
+        .bot-message {
+            align-self: flex-start; /* Align to the left */
+            background-color: #e5e7eb; /* Light gray for bot messages */
+            color: #1f2937; /* Dark text for bot messages */
+            border-bottom-left-radius: 0.25rem; /* Slightly less rounded on one corner */
+        }
+
+        .input-area {
+            border-top: 1px solid #e2e8f0; /* Separator line */
+            padding: 1rem;
+            display: flex;
+            gap: 0.75rem; /* Space between input and button */
+        }
+
+        .input-area input {
+            flex-grow: 1; /* Input takes most space */
+            padding: 0.75rem 1rem;
+            border: 1px solid #cbd5e1; /* Light border */
+            border-radius: 0.5rem;
+            outline: none; /* Remove default outline */
+            transition: border-color 0.2s;
+        }
+
+        .input-area input:focus {
+            border-color: #3b82f6; /* Blue border on focus */
+        }
+
+        .input-area button {
+            padding: 0.75rem 1.5rem;
+            background-color: #3b82f6; /* Blue button */
+            color: white;
+            border-radius: 0.5rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .input-area button:hover {
+            background-color: #2563eb; /* Darker blue on hover */
+        }
+
+        .input-area button:disabled {
+            background-color: #93c5fd; /* Lighter blue when disabled */
+            cursor: not-allowed;
+        }
+
+        /* Loading indicator styling */
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="chat-container w-full max-w-md mx-auto my-8 md:my-12 h-[calc(100vh-4rem)] md:h-[600px]">
+        <!-- Chat Header -->
+        <div class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-4 text-center rounded-t-xl shadow-md">
+            <h1 class="text-2xl font-bold">EchoBot</h1>
+            <p class="text-sm opacity-90">Your incredibly simple chat companion</p>
+        </div>
+
+        <!-- Chat History Display Area -->
+        <div id="chat-history" class="chat-history">
+            <!-- Messages will be appended here by JavaScript -->
+        </div>
+
+        <!-- Chat Input Area -->
+        <div class="input-area">
+            <input
+                type="text"
+                id="user-input"
+                placeholder="Type your message..."
+                class="flex-grow rounded-lg focus:ring-2 focus:ring-blue-300 transition-all duration-200"
+                aria-label="User message input"
+            />
+            <button id="send-button" class="rounded-lg font-semibold flex items-center justify-center">
+                <span id="send-button-text">Send</span>
+                <div id="loading-indicator" class="loading-spinner hidden ml-2"></div>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Element References ---
+        const chatHistory = document.getElementById('chat-history');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const sendButtonText = document.getElementById('send-button-text');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        // --- Helper Function: Append Message to Chat History ---
+        /**
+         * Appends a new message bubble to the chat history.
+         * @param {string} sender - 'user' or 'bot' to determine styling.
+         * @param {string} message - The text content of the message.
+         */
+        function appendMessage(sender, message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message-bubble');
+
+            if (sender === 'user') {
+                messageElement.classList.add('user-message');
+                messageElement.textContent = message;
+            } else {
+                messageElement.classList.add('bot-message');
+                messageElement.textContent = message;
+            }
+            chatHistory.appendChild(messageElement);
+
+            // Scroll to the bottom of the chat history to show the latest message
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        // --- Core Function: Send Message to Backend ---
+        async function sendMessage() {
+            const userMessage = userInput.value.trim();
+
+            // 1. Basic Input Validation
+            if (!userMessage) {
+                // Optionally provide user feedback, e.g., shake input or temporary message
+                userInput.placeholder = "Message cannot be empty!";
+                setTimeout(() => userInput.placeholder = "Type your message...", 2000);
+                return;
+            }
+
+            // 2. Display User Message Immediately
+            appendMessage('user', userMessage);
+            userInput.value = ''; // Clear input field
+
+            // 3. Show Loading State
+            sendButton.disabled = true; // Disable button to prevent multiple sends
+            sendButtonText.classList.add('hidden'); // Hide "Send" text
+            loadingIndicator.classList.remove('hidden'); // Show spinner
+
+            try {
+                // 4. API Interaction: Make POST request to the backend
+                // The /api/chat endpoint is proxied by Netlify to the Netlify Function.
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: userMessage }),
+                });
+
+                // 5. Handle Response
+                if (response.ok) {
+                    const data = await response.json();
+                    appendMessage('bot', data.reply); // Display bot's reply
+                } else {
+                    // Handle HTTP errors (e.g., 404, 500)
+                    const errorData = await response.json(); // Attempt to parse error message
+                    console.error('Backend error:', response.status, errorData.error || 'Unknown error');
+                    appendMessage('bot', `Error: ${errorData.error || 'Could not get a response.'} (Status: ${response.status})`);
+                }
+            } catch (error) {
+                // 6. Handle Network Errors (e.g., no internet, server unreachable)
+                console.error('Network or fetch error:', error);
+                appendMessage('bot', 'Oops! Could not connect to the bot. Please check your internet connection or try again later.');
+            } finally {
+                // 7. Hide Loading State, Re-enable Button
+                sendButton.disabled = false;
+                sendButtonText.classList.remove('hidden');
+                loadingIndicator.classList.add('hidden');
+                userInput.focus(); // Keep focus on input for quick follow-up
+            }
+        }
+
+        // --- Event Listeners ---
+        // Send button click
+        sendButton.addEventListener('click', sendMessage);
+
+        // Enter key press in input field
+        userInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Prevent default form submission if any
+                sendMessage();
+            }
+        });
+
+        // --- Initial Welcome Message ---
+        document.addEventListener('DOMContentLoaded', () => {
+            appendMessage('bot', "Hello! I'm EchoBot. How can I help?");
+            userInput.focus(); // Focus on the input field when the page loads
+        });
+    </script>
+
+    <div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:5px;font-family:sans-serif;font-size:12px">
+        Created by Dakota Rain Lock, powered by Holy Grail. A Dakota Rain Lock Invention.
+    </div>
+    
+</body>
+</html>
